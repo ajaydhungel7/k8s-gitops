@@ -15,10 +15,10 @@ platformApplications:
         releaseName: aws-load-balancer-controller
         values: |
           clusterName: k8s-gitops-dev
-          vpcId: REPLACE_WITH_DEV_VPC_ID
+          vpcId: vpc-085c6ca8165ff5a99
           serviceAccount:
             annotations:
-              eks.amazonaws.com/role-arn: REPLACE_WITH_DEV_ALB_CONTROLLER_ROLE_ARN
+              eks.amazonaws.com/role-arn: arn:aws:iam::544234170512:role/k8s-gitops-dev-alb-controller-role
 
   - name: metrics-server
     namespace: kube-system
@@ -46,7 +46,7 @@ platformApplications:
           rbac:
             serviceAccount:
               annotations:
-                eks.amazonaws.com/role-arn: REPLACE_WITH_DEV_CLUSTER_AUTOSCALER_ROLE_ARN
+                eks.amazonaws.com/role-arn: arn:aws:iam::544234170512:role/k8s-gitops-dev-cluster-autoscaler-role
 
   - name: external-secrets
     namespace: external-secrets
@@ -61,7 +61,7 @@ platformApplications:
         values: |
           serviceAccount:
             annotations:
-              eks.amazonaws.com/role-arn: REPLACE_WITH_DEV_EXTERNAL_SECRETS_ROLE_ARN
+              eks.amazonaws.com/role-arn: arn:aws:iam::544234170512:role/k8s-gitops-dev-external-secrets-role
 
   - name: jenkins
     namespace: jenkins
@@ -77,7 +77,7 @@ platformApplications:
           controller:
             serviceAccount:
               annotations:
-                eks.amazonaws.com/role-arn: REPLACE_WITH_DEV_JENKINS_ROLE_ARN
+                eks.amazonaws.com/role-arn: arn:aws:iam::544234170512:role/k8s-gitops-dev-jenkins-role
 
 workloadApplications:
   - name: backend
