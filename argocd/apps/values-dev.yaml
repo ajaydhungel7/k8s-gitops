@@ -176,7 +176,7 @@ workloadApplications:
     source:
       repoURL: https://charts.bitnami.com/bitnami
       chart: mongodb
-      targetRevision: 14.x.x
+      targetRevision: 16.x.x
       helm:
         releaseName: mongodb
         values: |
@@ -204,7 +204,7 @@ workloadApplications:
     source:
       repoURL: https://charts.bitnami.com/bitnami
       chart: redis
-      targetRevision: 18.x.x
+      targetRevision: 20.x.x
       helm:
         releaseName: redis
         values: |
