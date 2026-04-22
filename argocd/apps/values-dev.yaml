@@ -19,6 +19,10 @@ platformApplications:
           serviceAccount:
             annotations:
               eks.amazonaws.com/role-arn: arn:aws:iam::544234170512:role/k8s-gitops-dev-alb-controller-role
+    syncPolicy:
+      automated:
+        prune: true
+        selfHeal: true
 
   - name: metrics-server
     namespace: kube-system
@@ -29,6 +33,10 @@ platformApplications:
       targetRevision: 3.12.2
       helm:
         releaseName: metrics-server
+    syncPolicy:
+      automated:
+        prune: true
+        selfHeal: true
 
   - name: cluster-autoscaler
     namespace: kube-system
@@ -47,6 +55,10 @@ platformApplications:
             serviceAccount:
               annotations:
                 eks.amazonaws.com/role-arn: arn:aws:iam::544234170512:role/k8s-gitops-dev-cluster-autoscaler-role
+    syncPolicy:
+      automated:
+        prune: true
+        selfHeal: true
 
   - name: external-secrets
     namespace: external-secrets
@@ -62,6 +74,10 @@ platformApplications:
           serviceAccount:
             annotations:
               eks.amazonaws.com/role-arn: arn:aws:iam::544234170512:role/k8s-gitops-dev-external-secrets-role
+    syncPolicy:
+      automated:
+        prune: true
+        selfHeal: true
 
   - name: jenkins
     namespace: jenkins
@@ -78,6 +94,10 @@ platformApplications:
             serviceAccount:
               annotations:
                 eks.amazonaws.com/role-arn: arn:aws:iam::544234170512:role/k8s-gitops-dev-jenkins-role
+    syncPolicy:
+      automated:
+        prune: true
+        selfHeal: true
 
 workloadApplications:
   - name: backend
