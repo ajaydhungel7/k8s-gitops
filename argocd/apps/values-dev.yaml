@@ -121,7 +121,7 @@ platformApplications:
     source:
       repoURL: https://charts.jenkins.io
       chart: jenkins
-      targetRevision: 5.8.59
+      targetRevision: 5.9.18
       helm:
         releaseName: jenkins
         values: |
