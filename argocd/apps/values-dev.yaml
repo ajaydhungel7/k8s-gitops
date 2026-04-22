@@ -4,6 +4,20 @@ destinationServer: https://kubernetes.default.svc
 project: default
 
 platformApplications:
+  - name: aws-ebs-csi-driver
+    namespace: kube-system
+    syncWave: "-20"
+    source:
+      repoURL: https://kubernetes-sigs.github.io/aws-ebs-csi-driver
+      chart: aws-ebs-csi-driver
+      targetRevision: 2.x.x
+      helm:
+        releaseName: aws-ebs-csi-driver
+    syncPolicy:
+      automated:
+        prune: true
+        selfHeal: true
+
   - name: aws-load-balancer-controller
     namespace: kube-system
     syncWave: "-20"
