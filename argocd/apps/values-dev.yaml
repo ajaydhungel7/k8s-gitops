@@ -60,6 +60,18 @@ platformApplications:
         prune: true
         selfHeal: true
 
+  - name: cluster-secret-store
+    namespace: external-secrets
+    syncWave: "-5"
+    source:
+      repoURL: https://github.com/ajaydhungel7/k8s-gitops
+      path: helm/cluster-secret-store
+      targetRevision: dev
+    syncPolicy:
+      automated:
+        prune: true
+        selfHeal: true
+
   - name: external-secrets
     namespace: external-secrets
     createNamespace: true
