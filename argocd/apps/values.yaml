@@ -1,0 +1,7 @@
+repoURL: https://github.com/ajaydhungel7/k8s-gitops
+targetRevision: ""
+destinationServer: https://kubernetes.default.svc
+project: default
+
+platformApplications: []
+workloadApplications: []

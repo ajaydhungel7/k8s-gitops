@@ -1,0 +1,53 @@
+{{- $defaults := dict "project" .Values.project "destinationServer" .Values.destinationServer -}}
+{{- $applications := concat .Values.platformApplications .Values.workloadApplications -}}
+{{- range $app := $applications }}
+{{- $spec := mergeOverwrite (deepCopy $defaults) $app -}}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ $spec.name }}
+  namespace: argocd
+  {{- if $spec.syncWave }}
+  annotations:
+    argocd.argoproj.io/sync-wave: {{ $spec.syncWave | quote }}
+  {{- end }}
+spec:
+  project: {{ $spec.project }}
+  source:
+    {{- if $spec.source.repoURL }}
+    repoURL: {{ $spec.source.repoURL }}
+    {{- end }}
+    {{- if $spec.source.chart }}
+    chart: {{ $spec.source.chart }}
+    {{- end }}
+    {{- if $spec.source.path }}
+    path: {{ $spec.source.path }}
+    {{- end }}
+    targetRevision: {{ default $.Values.targetRevision $spec.source.targetRevision }}
+    {{- with $spec.source.helm }}
+    helm:
+      {{- with .releaseName }}
+      releaseName: {{ . }}
+      {{- end }}
+      {{- with .valueFiles }}
+      valueFiles:
+        {{- range . }}
+        - {{ . }}
+        {{- end }}
+      {{- end }}
+      {{- with .values }}
+      values: |
+{{ . | indent 8 }}
+      {{- end }}
+    {{- end }}
+  destination:
+    server: {{ $spec.destinationServer }}
+    namespace: {{ $spec.namespace }}
+  syncPolicy:
+    {{- if $spec.syncPolicy }}
+{{ toYaml $spec.syncPolicy | indent 4 }}
+    {{- end }}
+    syncOptions:
+      - CreateNamespace={{ ternary "true" "false" (default false $spec.createNamespace) }}
+---
+{{- end }}

@@ -1,0 +1,171 @@
+repoURL: https://github.com/ajaydhungel7/k8s-gitops
+targetRevision: dev
+destinationServer: https://kubernetes.default.svc
+project: default
+
+platformApplications:
+  - name: aws-load-balancer-controller
+    namespace: kube-system
+    syncWave: "-20"
+    source:
+      repoURL: https://aws.github.io/eks-charts
+      chart: aws-load-balancer-controller
+      targetRevision: 1.11.0
+      helm:
+        releaseName: aws-load-balancer-controller
+        values: |
+          clusterName: k8s-gitops-dev
+          vpcId: REPLACE_WITH_DEV_VPC_ID
+          serviceAccount:
+            annotations:
+              eks.amazonaws.com/role-arn: REPLACE_WITH_DEV_ALB_CONTROLLER_ROLE_ARN
+
+  - name: metrics-server
+    namespace: kube-system
+    syncWave: "-20"
+    source:
+      repoURL: https://kubernetes-sigs.github.io/metrics-server/
+      chart: metrics-server
+      targetRevision: 3.12.2
+      helm:
+        releaseName: metrics-server
+
+  - name: cluster-autoscaler
+    namespace: kube-system
+    syncWave: "-20"
+    source:
+      repoURL: https://kubernetes.github.io/autoscaler
+      chart: cluster-autoscaler
+      targetRevision: 9.46.6
+      helm:
+        releaseName: cluster-autoscaler
+        values: |
+          autoDiscovery:
+            clusterName: k8s-gitops-dev
+          awsRegion: us-east-1
+          rbac:
+            serviceAccount:
+              annotations:
+                eks.amazonaws.com/role-arn: REPLACE_WITH_DEV_CLUSTER_AUTOSCALER_ROLE_ARN
+
+  - name: external-secrets
+    namespace: external-secrets
+    createNamespace: true
+    syncWave: "-10"
+    source:
+      repoURL: https://charts.external-secrets.io
+      chart: external-secrets
+      targetRevision: 0.18.2
+      helm:
+        releaseName: external-secrets
+        values: |
+          serviceAccount:
+            annotations:
+              eks.amazonaws.com/role-arn: REPLACE_WITH_DEV_EXTERNAL_SECRETS_ROLE_ARN
+
+  - name: jenkins
+    namespace: jenkins
+    createNamespace: true
+    syncWave: "0"
+    source:
+      repoURL: https://charts.jenkins.io
+      chart: jenkins
+      targetRevision: 5.8.59
+      helm:
+        releaseName: jenkins
+        values: |
+          controller:
+            serviceAccount:
+              annotations:
+                eks.amazonaws.com/role-arn: REPLACE_WITH_DEV_JENKINS_ROLE_ARN
+
+workloadApplications:
+  - name: backend
+    namespace: k8s-gitops-dev
+    createNamespace: true
+    syncWave: "10"
+    source:
+      repoURL: https://github.com/ajaydhungel7/k8s-gitops
+      path: helm/backend
+      targetRevision: dev
+      helm:
+        valueFiles:
+          - values.yaml
+          - values-dev.yaml
+    syncPolicy:
+      automated:
+        prune: true
+        selfHeal: true
+
+  - name: frontend
+    namespace: k8s-gitops-dev
+    createNamespace: true
+    syncWave: "10"
+    source:
+      repoURL: https://github.com/ajaydhungel7/k8s-gitops
+      path: helm/frontend
+      targetRevision: dev
+      helm:
+        valueFiles:
+          - values.yaml
+          - values-dev.yaml
+    syncPolicy:
+      automated:
+        prune: true
+        selfHeal: true
+
+  - name: mongodb
+    namespace: k8s-gitops-dev
+    createNamespace: true
+    syncWave: "5"
+    source:
+      repoURL: https://charts.bitnami.com/bitnami
+      chart: mongodb
+      targetRevision: 14.x.x
+      helm:
+        releaseName: mongodb
+        values: |
+          architecture: standalone
+          auth:
+            enabled: true
+            rootUser: admin
+            existingSecret: backend-secrets
+            existingSecretPasswordKey: MONGODB_PASSWORD
+          persistence:
+            size: 5Gi
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+    syncPolicy:
+      automated:
+        prune: true
+        selfHeal: true
+
+  - name: redis
+    namespace: k8s-gitops-dev
+    createNamespace: true
+    syncWave: "5"
+    source:
+      repoURL: https://charts.bitnami.com/bitnami
+      chart: redis
+      targetRevision: 18.x.x
+      helm:
+        releaseName: redis
+        values: |
+          architecture: standalone
+          auth:
+            enabled: true
+            existingSecret: backend-secrets
+            existingSecretPasswordKey: REDIS_PASSWORD
+          master:
+            persistence:
+              size: 1Gi
+            resources:
+              requests:
+                cpu: 100m
+                memory: 128Mi
+    syncPolicy:
+      automated:
+        prune: true
+        selfHeal: true

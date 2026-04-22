@@ -1,0 +1,461 @@
+pipeline {
+    agent none
+
+    environment {
+        AWS_REGION      = 'us-east-1'
+        ECR_REGISTRY    = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+        BACKEND_REPO    = 'k8s-gitops-backend'
+        FRONTEND_REPO   = 'k8s-gitops-frontend'
+    }
+
+    stages {
+        stage('Checkout') {
+            agent {
+                kubernetes {
+                    yaml """
+apiVersion: v1
+kind: Pod
+spec:
+  containers:
+  - name: git
+    image: alpine/git:latest
+    command: ['cat']
+    tty: true
+"""
+                }
+            }
+            steps {
+                checkout scm
+                script {
+                    env.GIT_COMMIT_SHORT = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+                    env.CHANGED_BACKEND  = sh(script: "git diff --name-only HEAD~1 HEAD | grep '^app/' | wc -l", returnStdout: true).trim()
+                    env.CHANGED_FRONTEND = sh(script: "git diff --name-only HEAD~1 HEAD | grep '^frontend/' | wc -l", returnStdout: true).trim()
+
+                    if (env.BRANCH_NAME.startsWith('feature/')) {
+                        env.DEPLOY_ENV = 'dev'
+                    } else if (env.BRANCH_NAME == 'staging') {
+                        env.DEPLOY_ENV = 'staging'
+                    } else if (env.BRANCH_NAME == 'main') {
+                        env.DEPLOY_ENV = 'prod'
+                    } else {
+                        env.DEPLOY_ENV = 'dev'
+                    }
+                }
+            }
+        }
+
+        // ─── BACKEND PIPELINE ─────────────────────────────────────
+        stage('Backend - Unit Tests') {
+            when { expression { env.CHANGED_BACKEND.toInteger() > 0 } }
+            agent {
+                kubernetes {
+                    yaml """
+apiVersion: v1
+kind: Pod
+spec:
+  containers:
+  - name: python
+    image: python:3.11
+    command: ['cat']
+    tty: true
+"""
+                }
+            }
+            steps {
+                container('python') {
+                    dir('app') {
+                        sh 'pip install -r requirements.txt'
+                        sh 'pytest tests/test_unit.py -v --junitxml=unit-test-results.xml'
+                    }
+                }
+            }
+            post {
+                always { junit 'app/unit-test-results.xml' }
+            }
+        }
+
+        stage('Backend - Integration Tests') {
+            when { expression { env.CHANGED_BACKEND.toInteger() > 0 } }
+            agent {
+                kubernetes {
+                    yaml """
+apiVersion: v1
+kind: Pod
+spec:
+  containers:
+  - name: python
+    image: python:3.11
+    command: ['cat']
+    tty: true
+  - name: docker
+    image: docker:dind
+    securityContext:
+      privileged: true
+"""
+                }
+            }
+            steps {
+                container('docker') {
+                    sh 'docker compose up -d mongodb redis'
+                    sh '''
+                        for i in $(seq 1 30); do
+                            docker compose ps mongodb | grep healthy && break || sleep 2
+                        done
+                    '''
+                }
+                container('python') {
+                    dir('app') {
+                        sh 'pip install -r requirements.txt'
+                        sh 'pytest tests/test_integration.py -v'
+                    }
+                }
+            }
+            post {
+                always {
+                    container('docker') { sh 'docker compose down' }
+                }
+            }
+        }
+
+        stage('Backend - Code Quality') {
+            when { expression { env.CHANGED_BACKEND.toInteger() > 0 } }
+            agent {
+                kubernetes {
+                    yaml """
+apiVersion: v1
+kind: Pod
+spec:
+  containers:
+  - name: python
+    image: python:3.11
+    command: ['cat']
+    tty: true
+"""
+                }
+            }
+            steps {
+                container('python') {
+                    dir('app') {
+                        sh 'pip install flake8 bandit'
+                        sh 'flake8 . --max-line-length=120 --exclude=tests/'
+                        sh 'bandit -r . -ll --exclude ./tests'
+                    }
+                }
+            }
+        }
+
+        stage('Backend - Docker Build') {
+            when { expression { env.CHANGED_BACKEND.toInteger() > 0 } }
+            agent {
+                kubernetes {
+                    yaml """
+apiVersion: v1
+kind: Pod
+spec:
+  containers:
+  - name: docker
+    image: docker:dind
+    securityContext:
+      privileged: true
+    command: ['cat']
+    tty: true
+"""
+                }
+            }
+            steps {
+                container('docker') {
+                    script {
+                        env.BACKEND_IMAGE = "${ECR_REGISTRY}/${BACKEND_REPO}:${env.GIT_COMMIT_SHORT}"
+                    }
+                    sh """
+                        docker build \
+                          -t ${env.BACKEND_IMAGE} \
+                          -t ${ECR_REGISTRY}/${BACKEND_REPO}:${env.DEPLOY_ENV} \
+                          ./app
+                    """
+                }
+            }
+        }
+
+        stage('Backend - Image Scan') {
+            when { expression { env.CHANGED_BACKEND.toInteger() > 0 } }
+            agent {
+                kubernetes {
+                    yaml """
+apiVersion: v1
+kind: Pod
+spec:
+  containers:
+  - name: docker
+    image: docker:dind
+    securityContext:
+      privileged: true
+    command: ['cat']
+    tty: true
+"""
+                }
+            }
+            steps {
+                container('docker') {
+                    sh '''
+                        apk add --no-cache curl
+                        curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+                        trivy image --exit-code 1 --severity HIGH,CRITICAL ${BACKEND_IMAGE}
+                    '''
+                }
+            }
+        }
+
+        stage('Backend - Push to ECR') {
+            when { expression { env.CHANGED_BACKEND.toInteger() > 0 } }
+            agent {
+                kubernetes {
+                    yaml """
+apiVersion: v1
+kind: Pod
+spec:
+  serviceAccountName: jenkins
+  containers:
+  - name: aws
+    image: amazon/aws-cli:latest
+    command: ['cat']
+    tty: true
+  - name: docker
+    image: docker:dind
+    securityContext:
+      privileged: true
+    command: ['cat']
+    tty: true
+"""
+                }
+            }
+            steps {
+                container('aws') {
+                    sh "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}"
+                }
+                container('docker') {
+                    sh "docker push ${env.BACKEND_IMAGE}"
+                    sh "docker push ${ECR_REGISTRY}/${BACKEND_REPO}:${env.DEPLOY_ENV}"
+                }
+            }
+        }
+
+        stage('Backend - Update Helm Values') {
+            when { expression { env.CHANGED_BACKEND.toInteger() > 0 } }
+            agent {
+                kubernetes {
+                    yaml """
+apiVersion: v1
+kind: Pod
+spec:
+  containers:
+  - name: git
+    image: alpine/git:latest
+    command: ['cat']
+    tty: true
+"""
+                }
+            }
+            steps {
+                script {
+                    if (env.DEPLOY_ENV == 'prod') {
+                        input message: 'Approve backend deployment to prod?', ok: 'Deploy'
+                    }
+                }
+                container('git') {
+                    withCredentials([string(credentialsId: 'github-token', variable: 'GITHUB_TOKEN')]) {
+                        sh """
+                            git config user.email "jenkins@k8s-gitops.example.com"
+                            git config user.name "Jenkins"
+                            sed -i 's|tag:.*|tag: "${env.GIT_COMMIT_SHORT}"|' helm/backend/values-${env.DEPLOY_ENV}.yaml
+                            git add helm/backend/values-${env.DEPLOY_ENV}.yaml
+                            git commit -m "ci: update backend image to ${env.GIT_COMMIT_SHORT} [${env.DEPLOY_ENV}]"
+                            git push https://\${GITHUB_TOKEN}@github.com/YOUR_USERNAME/k8s-gitops.git HEAD:${env.BRANCH_NAME}
+                        """
+                    }
+                }
+            }
+        }
+
+        // ─── FRONTEND PIPELINE ────────────────────────────────────
+        stage('Frontend - Code Quality') {
+            when { expression { env.CHANGED_FRONTEND.toInteger() > 0 } }
+            agent {
+                kubernetes {
+                    yaml """
+apiVersion: v1
+kind: Pod
+spec:
+  containers:
+  - name: node
+    image: node:20-alpine
+    command: ['cat']
+    tty: true
+"""
+                }
+            }
+            steps {
+                container('node') {
+                    dir('frontend') {
+                        sh 'npm ci'
+                        sh 'npm run lint || true'
+                    }
+                }
+            }
+        }
+
+        stage('Frontend - Docker Build') {
+            when { expression { env.CHANGED_FRONTEND.toInteger() > 0 } }
+            agent {
+                kubernetes {
+                    yaml """
+apiVersion: v1
+kind: Pod
+spec:
+  containers:
+  - name: docker
+    image: docker:dind
+    securityContext:
+      privileged: true
+    command: ['cat']
+    tty: true
+"""
+                }
+            }
+            steps {
+                container('docker') {
+                    script {
+                        env.FRONTEND_IMAGE = "${ECR_REGISTRY}/${FRONTEND_REPO}:${env.GIT_COMMIT_SHORT}"
+                    }
+                    sh """
+                        docker build \
+                          -t ${env.FRONTEND_IMAGE} \
+                          -t ${ECR_REGISTRY}/${FRONTEND_REPO}:${env.DEPLOY_ENV} \
+                          ./frontend
+                    """
+                }
+            }
+        }
+
+        stage('Frontend - Image Scan') {
+            when { expression { env.CHANGED_FRONTEND.toInteger() > 0 } }
+            agent {
+                kubernetes {
+                    yaml """
+apiVersion: v1
+kind: Pod
+spec:
+  containers:
+  - name: docker
+    image: docker:dind
+    securityContext:
+      privileged: true
+    command: ['cat']
+    tty: true
+"""
+                }
+            }
+            steps {
+                container('docker') {
+                    sh '''
+                        apk add --no-cache curl
+                        curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+                        trivy image --exit-code 1 --severity HIGH,CRITICAL ${FRONTEND_IMAGE}
+                    '''
+                }
+            }
+        }
+
+        stage('Frontend - Push to ECR') {
+            when { expression { env.CHANGED_FRONTEND.toInteger() > 0 } }
+            agent {
+                kubernetes {
+                    yaml """
+apiVersion: v1
+kind: Pod
+spec:
+  serviceAccountName: jenkins
+  containers:
+  - name: aws
+    image: amazon/aws-cli:latest
+    command: ['cat']
+    tty: true
+  - name: docker
+    image: docker:dind
+    securityContext:
+      privileged: true
+    command: ['cat']
+    tty: true
+"""
+                }
+            }
+            steps {
+                container('aws') {
+                    sh "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}"
+                }
+                container('docker') {
+                    sh "docker push ${env.FRONTEND_IMAGE}"
+                    sh "docker push ${ECR_REGISTRY}/${FRONTEND_REPO}:${env.DEPLOY_ENV}"
+                }
+            }
+        }
+
+        stage('Frontend - Update Helm Values') {
+            when { expression { env.CHANGED_FRONTEND.toInteger() > 0 } }
+            agent {
+                kubernetes {
+                    yaml """
+apiVersion: v1
+kind: Pod
+spec:
+  containers:
+  - name: git
+    image: alpine/git:latest
+    command: ['cat']
+    tty: true
+"""
+                }
+            }
+            steps {
+                script {
+                    if (env.DEPLOY_ENV == 'prod') {
+                        input message: 'Approve frontend deployment to prod?', ok: 'Deploy'
+                    }
+                }
+                container('git') {
+                    withCredentials([string(credentialsId: 'github-token', variable: 'GITHUB_TOKEN')]) {
+                        sh """
+                            git config user.email "jenkins@k8s-gitops.example.com"
+                            git config user.name "Jenkins"
+                            sed -i 's|tag:.*|tag: "${env.GIT_COMMIT_SHORT}"|' helm/frontend/values-${env.DEPLOY_ENV}.yaml
+                            git add helm/frontend/values-${env.DEPLOY_ENV}.yaml
+                            git commit -m "ci: update frontend image to ${env.GIT_COMMIT_SHORT} [${env.DEPLOY_ENV}]"
+                            git push https://\${GITHUB_TOKEN}@github.com/YOUR_USERNAME/k8s-gitops.git HEAD:${env.BRANCH_NAME}
+                        """
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            withCredentials([string(credentialsId: 'slack-webhook', variable: 'SLACK_URL')]) {
+                sh """
+                    curl -s -X POST -H 'Content-type: application/json' \
+                    --data '{"text":"BUILD SUCCESS | Branch: ${env.BRANCH_NAME} | Env: ${env.DEPLOY_ENV} | Tag: ${env.GIT_COMMIT_SHORT} | ${env.BUILD_URL}"}' \
+                    \${SLACK_URL}
+                """
+            }
+        }
+        failure {
+            withCredentials([string(credentialsId: 'slack-webhook', variable: 'SLACK_URL')]) {
+                sh """
+                    curl -s -X POST -H 'Content-type: application/json' \
+                    --data '{"text":"BUILD FAILED | Branch: ${env.BRANCH_NAME} | Env: ${env.DEPLOY_ENV} | Tag: ${env.GIT_COMMIT_SHORT} | ${env.BUILD_URL}"}' \
+                    \${SLACK_URL}
+                """
+            }
+        }
+    }
+}
