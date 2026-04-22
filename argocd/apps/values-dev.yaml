@@ -4,15 +4,17 @@ destinationServer: https://kubernetes.default.svc
 project: default
 
 platformApplications:
-  - name: aws-ebs-csi-driver
+  - name: configs
     namespace: kube-system
-    syncWave: "-20"
+    syncWave: "-5"
     source:
-      repoURL: https://kubernetes-sigs.github.io/aws-ebs-csi-driver
-      chart: aws-ebs-csi-driver
-      targetRevision: 2.x.x
+      repoURL: https://github.com/ajaydhungel7/k8s-gitops
+      path: helm/configs
+      targetRevision: dev
       helm:
-        releaseName: aws-ebs-csi-driver
+        valueFiles:
+          - values.yaml
+          - values-dev.yaml
     syncPolicy:
       automated:
         prune: true
@@ -69,18 +71,6 @@ platformApplications:
             serviceAccount:
               annotations:
                 eks.amazonaws.com/role-arn: arn:aws:iam::544234170512:role/k8s-gitops-dev-cluster-autoscaler-role
-    syncPolicy:
-      automated:
-        prune: true
-        selfHeal: true
-
-  - name: cluster-secret-store
-    namespace: external-secrets
-    syncWave: "-5"
-    source:
-      repoURL: https://github.com/ajaydhungel7/k8s-gitops
-      path: helm/cluster-secret-store
-      targetRevision: dev
     syncPolicy:
       automated:
         prune: true

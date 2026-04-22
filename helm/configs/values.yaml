@@ -1,0 +1,20 @@
+aws:
+  region: us-east-1
+
+storageClass:
+  name: gp3
+  default: true
+  type: gp3
+  reclaimPolicy: Delete
+  volumeBindingMode: WaitForFirstConsumer
+
+clusterSecretStore:
+  name: aws-secrets-manager
+  esoServiceAccount: external-secrets
+  esoNamespace: external-secrets
+  esoRoleArn: ""
+
+namespaces: []
+
+networkPolicies:
+  enabled: true

@@ -162,10 +162,8 @@ kubectl get nodes  # verify
 ### 6. Update environment metadata and apply the Argo CD root app
 
 ```bash
-# Checkout the matching environment branch first, then sync the Terraform outputs into the Argo values file
-./scripts/sync-argocd-infra-values.sh dev
-
-# Review/update repoURL if needed, then apply the matching bootstrap root app
+# Checkout the matching environment branch first, then update repoURL and IRSA/VPC placeholders in argocd/apps/values-dev.yaml
+# Then apply the matching bootstrap root app
 kubectl apply -f argocd/bootstrap/root-app-dev.yaml -n argocd
 ```
 
@@ -193,8 +191,6 @@ git push origin feature/initial-deploy
 ```
 
 Push changes to the branch that matches the environment you want to reconcile. Argo CD will only watch that branch for that environment, so pushes to `dev` affect only dev, pushes to `staging` affect only staging, and pushes to `prod` affect only prod.
-
-The helper script reads `terragrunt output -json` from `terraform/environments/<env>/vpc` and `terraform/environments/<env>/iam`, then updates only the Terraform-derived values in `argocd/apps/values-<env>.yaml`.
 
 ## Adding a New Environment
 
