@@ -180,6 +180,8 @@ workloadApplications:
       helm:
         releaseName: mongodb
         values: |
+          global:
+            imageRegistry: public.ecr.aws
           architecture: standalone
           auth:
             enabled: true
@@ -208,6 +210,8 @@ workloadApplications:
       helm:
         releaseName: redis
         values: |
+          global:
+            imageRegistry: public.ecr.aws
           architecture: standalone
           auth:
             enabled: true
