@@ -1,6 +1,9 @@
 aws:
   region: us-east-1
 
+project: k8s-gitops
+environment: ""
+
 storageClass:
   name: gp3
   default: true

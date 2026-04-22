@@ -1,6 +1,8 @@
 aws:
   region: us-east-1
 
+environment: dev
+
 clusterSecretStore:
   esoRoleArn: arn:aws:iam::544234170512:role/k8s-gitops-dev-external-secrets-role
 
