@@ -17,3 +17,8 @@ output "cluster_autoscaler_role_arn" {
   description = "IAM role ARN for Cluster Autoscaler"
   value       = aws_iam_role.cluster_autoscaler.arn
 }
+
+output "ebs_csi_role_arn" {
+  description = "IAM role ARN for EBS CSI Driver"
+  value       = aws_iam_role.ebs_csi.arn
+}
